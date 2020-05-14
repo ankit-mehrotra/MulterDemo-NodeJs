@@ -1,50 +1,69 @@
+//Set Storage Engine
 const express = require('express');
-const Nexmo = require('nexmo');
-const ejs = require('ejs');
-const socketio = require('socket.io');
-
-const PORT = 3000;
+const multer = require('multer');
+const path = require('path');
 const app = express();
-app.set('view engine', "ejs");
-app.engine('html', ejs.renderFile);
-app.use(express.json());
 
-app.use(express.static(__dirname+ '/public'));
-
-const nexmo = new Nexmo({
-    apiKey: '280d2429',
-    apiSecret: 'SwrXUMA1uzQjpgzk',
-},{debug: true})
-
-app.get('/', (req,res) => {
-    res.render('index1');
-})
-
-app.post('/', (req,res) => {
-    const {number,text} = req.body;
-    console.log(number,text);
-    nexmo.message.sendSms('919900559548',number, text, {type: 'unicode'}, (err,responseData) => {
-        if(err) {
-            console.log(err)
-        } else {
-            console.dir("Send",responseData);
-            const data = {
-                id: responseData.messages[0]['message-id'],
-                number: responseData.messages[0]['to']
-            }
-            io.emit('smsdata', data);
-        } 
-    })
-})
-const server = app.listen(PORT, () => {
-    console.log('Server started');
+const storage = multer.diskStorage({
+     destination: './public/upload',
+     filename: function(req, file, cb) {
+         cb(null,file.fieldname + '-' + Date.now() + path.extname(file.originalname))
+     }
 });
 
-const io = socketio(server);
+//Initialize upload
 
-io.on('connection', () => {
-    console.log('connected');
-    io.on('disconnect', () => {
-        console.log('disconnected');
+function checkFileType(file,cb) {
+   //Allowed exte
+   const fileTypes = /jpeg|png|jpg|gif/g;
+   const extname = fileTypes.test(path.extname(file.originalname).toLowerCase());
+   const mimeType = fileTypes.test(file.mimetype);
+   if(mimeType && extname){
+       cb(null,true)
+   } else {
+       cb('Error: Images only')
+   }
+}
+
+const upload =  multer({
+    storage,
+    limits: {fileSize: 1000000},
+    fileFilter: (req,file,cb) => {
+        checkFileType(file,cb)
+    }
+}).single('myImage')
+
+const PORT = 3000;
+app.set('view engine', 'ejs');
+
+app.use(express.static('./public'));
+
+app.get('/', (req,res) => {
+    res.render('index');
+});
+
+app.post('/upload', (req,res) => {
+    upload(req,res,(err) => {
+        if(err) {
+            res.render('index',{
+                msg: err
+            })
+        } else {
+            if(req.file == undefined){
+                res.render('index', {
+                    msg: 'Error : No File Selected'
+                })
+            } else {
+                res.render('index', {
+                    msg: 'File Uploaded',
+                    file: `upload/${req.file.filename}`
+                })
+            }
+        }
+        
     })
+})
+
+app.listen(PORT,() => {
+    console.log('Server started on Port',PORT)
 })
